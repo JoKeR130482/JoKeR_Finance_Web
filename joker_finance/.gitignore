@@ -1,0 +1,64 @@
+# .gitignore for JoKeR_Finance
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Node (for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+.nuxt/
+dist/
+build/
+
+# Secrets
+*.pem
+*.key
+secrets/
+
+# Backup files
+*.bak
+*.backup
