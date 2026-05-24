@@ -4,16 +4,12 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.db.session import get_db
-from app.models import Account, TransactionType
+from app.models import Account, TransactionType, Transaction, Investment, User
 from app.schemas import AccountCreate, AccountUpdate, AccountResponse, PaginatedResponse
+from app.core.deps import get_current_user
 
 
 router = APIRouter()
-
-
-def get_current_user_id() -> int:
-    """TODO: Получить ID текущего пользователя из JWT"""
-    return 1  # Заглушка
 
 
 @router.get("/", response_model=List[AccountResponse])
@@ -23,11 +19,11 @@ def get_accounts(
     include_archived: bool = False,
     account_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """Получение списка счетов"""
     
-    query = db.query(Account).filter(Account.user_id == current_user_id)
+    query = db.query(Account).filter(Account.user_id == current_user.id)
     
     if not include_archived:
         query = query.filter(Account.is_archived == False)
@@ -44,13 +40,13 @@ def get_accounts(
 def get_account(
     account_id: int,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """Получение счёта по ID"""
     
     account = db.query(Account).filter(
         Account.id == account_id,
-        Account.user_id == current_user_id
+        Account.user_id == current_user.id
     ).first()
     
     if not account:
@@ -63,18 +59,18 @@ def get_account(
 def create_account(
     account_data: AccountCreate,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """Создание нового счёта"""
     
     # Получаем максимальный sort_order для сортировки
     max_order = db.query(Account).filter(
-        Account.user_id == current_user_id
+        Account.user_id == current_user.id
     ).count()
     
     account = Account(
         **account_data.model_dump(),
-        user_id=current_user_id,
+        user_id=current_user.id,
         sort_order=max_order
     )
     
@@ -90,13 +86,13 @@ def update_account(
     account_id: int,
     account_data: AccountUpdate,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """Обновление счёта"""
     
     account = db.query(Account).filter(
         Account.id == account_id,
-        Account.user_id == current_user_id
+        Account.user_id == current_user.id
     ).first()
     
     if not account:
@@ -116,13 +112,13 @@ def update_account(
 def delete_account(
     account_id: int,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """Удаление счёта (архивирование)"""
     
     account = db.query(Account).filter(
         Account.id == account_id,
-        Account.user_id == current_user_id
+        Account.user_id == current_user.id
     ).first()
     
     if not account:
@@ -140,7 +136,7 @@ def merge_accounts(
     source_account_id: int,
     target_account_id: int,
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Объединение счетов
@@ -151,12 +147,12 @@ def merge_accounts(
     
     source = db.query(Account).filter(
         Account.id == source_account_id,
-        Account.user_id == current_user_id
+        Account.user_id == current_user.id
     ).first()
     
     target = db.query(Account).filter(
         Account.id == target_account_id,
-        Account.user_id == current_user_id
+        Account.user_id == current_user.id
     ).first()
     
     if not source or not target:
@@ -168,10 +164,33 @@ def merge_accounts(
             detail="Cannot merge accounts of different types"
         )
     
-    # TODO: Атомарная миграция операций
-    # - Обновить source_account_id в transactions
-    # - Обновить account_id в investments
-    # - Пересчитать балансы
+    # Атомарная миграция операций
+    from sqlalchemy import update
+    
+    # Обновить source_account_id в transactions
+    db.execute(
+        update(Transaction).
+        where(Transaction.source_account_id == source.id).
+        values(source_account_id=target.id)
+    )
+    
+    # Обновить target_account_id в transactions
+    db.execute(
+        update(Transaction).
+        where(Transaction.target_account_id == source.id).
+        values(target_account_id=target.id)
+    )
+    
+    # Обновить account_id в investments
+    db.execute(
+        update(Investment).
+        where(Investment.account_id == source.id).
+        values(account_id=target.id)
+    )
+    
+    # Пересчитать балансы
+    target.balance = target.balance + source.balance
+    source.balance = 0
     
     source.is_archived = True
     db.commit()
@@ -183,14 +202,14 @@ def merge_accounts(
 def reorder_accounts(
     account_ids: List[int],
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id)
+    current_user: User = Depends(get_current_user)
 ):
     """Изменение порядка счетов (для drag&drop)"""
     
     for index, account_id in enumerate(account_ids):
         account = db.query(Account).filter(
             Account.id == account_id,
-            Account.user_id == current_user_id
+            Account.user_id == current_user.id
         ).first()
         
         if account:
