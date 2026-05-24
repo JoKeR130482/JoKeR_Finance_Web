@@ -7,6 +7,7 @@ from app.core.security import hash_password, verify_password
 from app.core.jwt import create_access_token, create_refresh_token, decode_token
 from app.models import User, Profile, Settings
 from app.schemas import UserCreate, UserLogin, Token, TokenRefresh
+from app.core.deps import get_current_user
 
 
 router = APIRouter()
@@ -118,10 +119,15 @@ def refresh_token(token_data: TokenRefresh, db: Session = Depends(get_db)) -> An
 
 
 @router.get("/me", response_model=dict)
-def get_current_user(
+def get_current_user_info(
     db: Session = Depends(get_db),
-    current_user: User = Depends(lambda: None)  # TODO: добавить dependency для JWT
+    current_user: User = Depends(get_current_user)
 ) -> Any:
     """Получение текущего пользователя"""
-    # TODO: реализовать dependency для получения пользователя из JWT
-    return {"message": "Implement JWT dependency"}
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at
+    }
